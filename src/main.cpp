@@ -1,9 +1,18 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <PubSubClient.h>
+
 #include "secrets.h"
+#include "config.h"
 
 #define LED_PIN D10
 #define DELAY 1000
+
+WiFiClient espClient;
+PubSubClient mqtt(espClient);
+
+unsigned long lastPublish = 0;
+const long publishInterval = 5000; // Publish every 5 seconds
 
 
 void connectWifi() {
@@ -25,6 +34,39 @@ void connectWifi() {
   Serial.println(WiFi.localIP());
 }
 
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i = 0; i < length; i++) {
+	Serial.print((char)payload[i]);
+  }
+  Serial.println();
+}
+
+
+void connectMQTT() {
+    while (!mqtt.connected()) {
+        Serial.print("Connecting to MQTT...");
+        if (mqtt.connect(CLIENT_ID)) {
+            Serial.println("connected");
+            mqtt.subscribe(TEST_TOPIC);
+            mqtt.publish(TEST_TOPIC, "i am online");
+        } else {
+            Serial.print("failed, rc=");
+            Serial.print(mqtt.state());
+            Serial.println(" retrying in 2s");
+            delay(2000);
+        }
+    }
+}
+
+
+void initMQTT() {
+	mqtt.setServer(MQTT_BROKER, MQTT_PORT);
+	mqtt.setCallback(mqttCallback);
+}
+
 void initPins() {
   pinMode(LED_PIN, OUTPUT);
 }
@@ -36,11 +78,17 @@ void setup() {
 
   connectWifi();
   initPins();
+  initMQTT();
+
+  mqtt.publish(TEST_TOPIC, "ESP32 booted up!");
+  mqtt.subscribe(TEST_TOPIC);
 }
+
 
 void blink_led() {
   // Put your main code here, to run repeatedly:
   digitalWrite(LED_PIN, HIGH);
+  mqtt.publish(TEST_TOPIC, "ESP32 not connected to WiFi!");
   delay(DELAY);
   digitalWrite(LED_PIN, LOW);
   delay(DELAY);
@@ -48,10 +96,18 @@ void blink_led() {
 
 void loop() {
   if (WiFi.status() != WL_CONNECTED) {
-    blink_led();
+    connectWifi();
   }
-  else {
-	digitalWrite(LED_PIN, HIGH);
+  if (!mqtt.connected()) {
+	connectMQTT();
   }
+
+      // Publish periodically
+    if (millis() - lastPublish > publishInterval) {
+        lastPublish = millis();
+        String payload = "uptime: " + String(millis() / 1000) + "s";
+        mqtt.publish(TEST_TOPIC, payload.c_str());
+        Serial.println("Published: " + payload);
+    }
 }
 
