@@ -14,45 +14,92 @@ PubSubClient mqtt(espClient);
 unsigned long lastPublish = 0;
 const long publishInterval = 5000; // Publish every 5 seconds
 
-
-void connectWifi() {
-  Serial.print("Connecting to ");
-  Serial.print(WIFI_SSID);
-  Serial.print(" with password ");
-  Serial.println(WIFI_PASSWORD);
-
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-
-  while (WiFi.status() != WL_CONNECTED) {
-	delay(500);
-	Serial.print(".");
-  }
-
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+void flickerLed()
+{
+    digitalWrite(LED_PIN, HIGH);
+    delay(60);
+    digitalWrite(LED_PIN, LOW);
+    delay(80);
+    digitalWrite(LED_PIN, HIGH);
+    delay(60);
+    digitalWrite(LED_PIN, LOW);
 }
 
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] ");
-  for (int i = 0; i < length; i++) {
-	Serial.print((char)payload[i]);
-  }
-  Serial.println();
+void connectWifi()
+{
+    Serial.print("Connecting to ");
+    Serial.print(WIFI_SSID);
+    Serial.print(" with password ");
+    Serial.println(WIFI_PASSWORD);
+
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+    while (WiFi.status() != WL_CONNECTED)
+    {
+        delay(500);
+        Serial.print(".");
+    }
+
+    Serial.println("");
+    Serial.println("WiFi connected");
+    Serial.print("IP address: ");
+    Serial.println(WiFi.localIP());
 }
 
+void mqttCallback(char *topic, byte *payload, unsigned int length)
+{
+    String message;
+    for (unsigned int i = 0; i < length; i++)
+    {
+        message += (char)payload[i];
+    }
+    String topicStr(topic);
 
-void connectMQTT() {
-    while (!mqtt.connected()) {
+    Serial.print("Message arrived [");
+    Serial.print(topic);
+    Serial.print("] ");
+    Serial.print(message);
+    Serial.println();
+
+    if (message == "on")
+    {
+        Serial.println("Turning LED ON");
+        digitalWrite(LED_PIN, HIGH);
+    }
+    else if (message == "off")
+    {
+        Serial.println("Turning LED OFF");
+        digitalWrite(LED_PIN, LOW);
+    }
+    else if (message == "flicker")
+    {
+        Serial.println("Flickering LED");
+        flickerLed();
+    }
+
+    
+}
+
+void connectMQTT()
+{
+    while (!mqtt.connected())
+    {
         Serial.print("Connecting to MQTT...");
-        if (mqtt.connect(CLIENT_ID)) {
+        if (mqtt.connect(CLIENT_ID))
+        {
             Serial.println("connected");
-            mqtt.subscribe(TEST_TOPIC);
+            if (mqtt.subscribe(TEST_TOPIC))
+            {
+                Serial.println("subscribed to topic");
+            }
+            else
+            {
+                Serial.println("failed to subscribe to topic");
+            }
             mqtt.publish(TEST_TOPIC, "i am online");
-        } else {
+        }
+        else
+        {
             Serial.print("failed, rc=");
             Serial.print(mqtt.state());
             Serial.println(" retrying in 2s");
@@ -61,53 +108,57 @@ void connectMQTT() {
     }
 }
 
-
-void initMQTT() {
-	mqtt.setServer(MQTT_BROKER, MQTT_PORT);
-	mqtt.setCallback(mqttCallback);
+void initMQTT()
+{
+    mqtt.setServer(MQTT_BROKER, MQTT_PORT);
+    mqtt.setCallback(mqttCallback);
 }
 
-void initPins() {
-  pinMode(LED_PIN, OUTPUT);
+void initPins()
+{
+    pinMode(LED_PIN, OUTPUT);
 }
 
+void setup()
+{
+    Serial.begin(115200);
+    delay(1000);
 
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
-
-  connectWifi();
-  initPins();
-  initMQTT();
-
-  mqtt.publish(TEST_TOPIC, "ESP32 booted up!");
-  mqtt.subscribe(TEST_TOPIC);
-}
-
-
-void blink_led() {
-  // Put your main code here, to run repeatedly:
-  digitalWrite(LED_PIN, HIGH);
-  mqtt.publish(TEST_TOPIC, "ESP32 not connected to WiFi!");
-  delay(DELAY);
-  digitalWrite(LED_PIN, LOW);
-  delay(DELAY);
-}
-
-void loop() {
-  if (WiFi.status() != WL_CONNECTED) {
     connectWifi();
-  }
-  if (!mqtt.connected()) {
-	connectMQTT();
-  }
+    initPins();
+    initMQTT();
 
-      // Publish periodically
-    if (millis() - lastPublish > publishInterval) {
+    // these are not running for som reson
+    mqtt.publish(TEST_TOPIC, "ESP32 booted up!");
+    if (mqtt.subscribe(TEST_TOPIC))
+    {
+        Serial.println("subscribed to topic");
+    }
+    else
+    {
+        Serial.println("failed to subscribe to topic");
+    }
+}
+
+void loop()
+{
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        connectWifi();
+    }
+    if (!mqtt.connected())
+    {
+        connectMQTT();
+    }
+
+    mqtt.loop();
+
+    // Publish periodically
+    if (millis() - lastPublish > publishInterval)
+    {
         lastPublish = millis();
         String payload = "uptime: " + String(millis() / 1000) + "s";
         mqtt.publish(TEST_TOPIC, payload.c_str());
         Serial.println("Published: " + payload);
     }
 }
-
