@@ -61,23 +61,24 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     Serial.print(message);
     Serial.println();
 
-    if (message == "on")
+    if (topicStr == TOPIC_LED_CONTROL)
     {
-        Serial.println("Turning LED ON");
-        digitalWrite(LED_PIN, HIGH);
+        if (message == "on")
+        {
+            Serial.println("Turning LED ON");
+            digitalWrite(LED_PIN, HIGH);
+        }
+        else if (message == "off")
+        {
+            Serial.println("Turning LED OFF");
+            digitalWrite(LED_PIN, LOW);
+        }
+        else if (message == "flicker")
+        {
+            Serial.println("Flickering LED");
+            flickerLed();
+        }
     }
-    else if (message == "off")
-    {
-        Serial.println("Turning LED OFF");
-        digitalWrite(LED_PIN, LOW);
-    }
-    else if (message == "flicker")
-    {
-        Serial.println("Flickering LED");
-        flickerLed();
-    }
-
-    
 }
 
 void connectMQTT()
@@ -88,7 +89,7 @@ void connectMQTT()
         if (mqtt.connect(CLIENT_ID))
         {
             Serial.println("connected");
-            if (mqtt.subscribe(TEST_TOPIC))
+            if (mqtt.subscribe(TOPIC_ALL))
             {
                 Serial.println("subscribed to topic");
             }
@@ -96,7 +97,7 @@ void connectMQTT()
             {
                 Serial.println("failed to subscribe to topic");
             }
-            mqtt.publish(TEST_TOPIC, "i am online");
+            mqtt.publish(TOPIC_UPTIME, "i am online");
         }
         else
         {
@@ -127,17 +128,6 @@ void setup()
     connectWifi();
     initPins();
     initMQTT();
-
-    // these are not running for som reson
-    mqtt.publish(TEST_TOPIC, "ESP32 booted up!");
-    if (mqtt.subscribe(TEST_TOPIC))
-    {
-        Serial.println("subscribed to topic");
-    }
-    else
-    {
-        Serial.println("failed to subscribe to topic");
-    }
 }
 
 void loop()
@@ -158,7 +148,7 @@ void loop()
     {
         lastPublish = millis();
         String payload = "uptime: " + String(millis() / 1000) + "s";
-        mqtt.publish(TEST_TOPIC, payload.c_str());
+        mqtt.publish(TOPIC_UPTIME, payload.c_str());
         Serial.println("Published: " + payload);
     }
 }
