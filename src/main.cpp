@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <esp_system.h>
 
 #include "secrets.h"
 #include "config.h"
@@ -130,6 +131,31 @@ void setup()
     initMQTT();
 }
 
+String getResetReason() {
+    switch (esp_reset_reason()) {
+        case ESP_RST_POWERON:   return "power_on";
+        case ESP_RST_SW:        return "software";
+        case ESP_RST_PANIC:     return "panic";
+        case ESP_RST_INT_WDT:   return "watchdog_int";
+        case ESP_RST_TASK_WDT:  return "watchdog_task";
+        case ESP_RST_WDT:       return "watchdog";
+        case ESP_RST_DEEPSLEEP: return "deep_sleep";
+        case ESP_RST_BROWNOUT:  return "brownout";
+        default:                return "unknown";
+    }
+}
+void publishStatus() {
+    String json = "{";
+    json += "\"uptime\":" + String(millis() / 1000) + ",";
+    json += "\"heap_free\":" + String(ESP.getFreeHeap()) + ",";
+    json += "\"heap_min\":" + String(ESP.getMinFreeHeap()) + ",";
+    json += "\"rssi\":" + String(WiFi.RSSI()) + ",";
+    json += "\"reset_reason\":\"" + getResetReason() + "\"";
+    json += "}";
+    
+    mqtt.publish(TOPIC_UPTIME, json.c_str());
+} 
+
 void loop()
 {
     if (WiFi.status() != WL_CONNECTED)
@@ -146,9 +172,7 @@ void loop()
     // Publish periodically
     if (millis() - lastPublish > publishInterval)
     {
+        publishStatus();
         lastPublish = millis();
-        String payload = "uptime: " + String(millis() / 1000) + "s";
-        mqtt.publish(TOPIC_UPTIME, payload.c_str());
-        Serial.println("Published: " + payload);
     }
 }
