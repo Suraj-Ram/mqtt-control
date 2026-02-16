@@ -177,6 +177,9 @@ void publishStatus()
 }
 
 void handleRemoteButton(uint64_t code) {
+    // publish ir button press
+    mqtt.publish(TOPIC_IR_BUTTON_PRESS, String(code, HEX).c_str());
+
   switch (code) {
     case BUTTON_1:
         Serial.println("Fan speed pressed");

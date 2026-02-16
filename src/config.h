@@ -6,6 +6,7 @@
 #define TOPIC_ALL "esp_iot/#"
 #define TOPIC_UPTIME "esp_iot/uptime"
 #define TOPIC_LED_CONTROL "esp_iot/led"
+#define TOPIC_IR_BUTTON_PRESS "esp_iot/controls/ir_remote/press"
 
 
 // IR Remote Buttons
