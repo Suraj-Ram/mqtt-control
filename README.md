@@ -1,3 +1,20 @@
+
+
+MQTT topics:
+esp_iot/uptime - publishes device info every 5 seconds
+esp_iot/led/set - used to set the LED state (payload: "on" or "off")
+esp_iot/led/state - publishes the current LED state
+
+esp_iot/ir_remote/pressed - publishes hex code of IR remote button press
+esp_iot/ir_remote/send - used to send an IR signal (payload: hex code of the signal to send)
+
+esp_iot
+
+
+
+
+
+
 Create a secrets.h file to store WiFi credentials
 
 ```cpp
