@@ -2,12 +2,13 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <esp_system.h>
+#include <IRremote.h>
 
 #include "secrets.h"
 #include "config.h"
 
 #define LED_PIN D10
-#define DELAY 1000
+#define IR_RECEIVER_PIN D2
 
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
@@ -121,6 +122,12 @@ void initPins()
     pinMode(LED_PIN, OUTPUT);
 }
 
+void initIRReceiver()
+{
+    IrReceiver.begin(IR_RECEIVER_PIN, DISABLE_LED_FEEDBACK);
+    Serial.println("IR Receiver initialized");
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -129,22 +136,35 @@ void setup()
     connectWifi();
     initPins();
     initMQTT();
+    initIRReceiver();
 }
 
-String getResetReason() {
-    switch (esp_reset_reason()) {
-        case ESP_RST_POWERON:   return "power_on";
-        case ESP_RST_SW:        return "software";
-        case ESP_RST_PANIC:     return "panic";
-        case ESP_RST_INT_WDT:   return "watchdog_int";
-        case ESP_RST_TASK_WDT:  return "watchdog_task";
-        case ESP_RST_WDT:       return "watchdog";
-        case ESP_RST_DEEPSLEEP: return "deep_sleep";
-        case ESP_RST_BROWNOUT:  return "brownout";
-        default:                return "unknown";
+String getResetReason()
+{
+    switch (esp_reset_reason())
+    {
+    case ESP_RST_POWERON:
+        return "power_on";
+    case ESP_RST_SW:
+        return "software";
+    case ESP_RST_PANIC:
+        return "panic";
+    case ESP_RST_INT_WDT:
+        return "watchdog_int";
+    case ESP_RST_TASK_WDT:
+        return "watchdog_task";
+    case ESP_RST_WDT:
+        return "watchdog";
+    case ESP_RST_DEEPSLEEP:
+        return "deep_sleep";
+    case ESP_RST_BROWNOUT:
+        return "brownout";
+    default:
+        return "unknown";
     }
 }
-void publishStatus() {
+void publishStatus()
+{
     String json = "{";
     json += "\"uptime\":" + String(millis() / 1000) + ",";
     json += "\"heap_free\":" + String(ESP.getFreeHeap()) + ",";
@@ -152,9 +172,48 @@ void publishStatus() {
     json += "\"rssi\":" + String(WiFi.RSSI()) + ",";
     json += "\"reset_reason\":\"" + getResetReason() + "\"";
     json += "}";
-    
+
     mqtt.publish(TOPIC_UPTIME, json.c_str());
-} 
+}
+
+void handleRemoteButton(uint64_t code) {
+  switch (code) {
+    case BUTTON_1:
+        Serial.println("Fan speed pressed");
+      // TODO: Toggle fan power
+      break;
+      
+    case BUTTON_2:
+      Serial.println("Power pressed");
+      // TODO: Toggle fan power
+      break;
+      
+    case BUTTON_3:
+      Serial.println("Blank pressed");
+      // TODO: Handle blank button
+      break;
+      
+    case BUTTON_4:
+      Serial.println("Timer pressed");
+      // TODO: Cycle timer setting
+      break;
+      
+    case BUTTON_5:
+      Serial.println("Blank pressed");
+      // TODO: Handle blank button
+      break;
+      
+    case BUTTON_6:
+      Serial.println("Blank pressed");
+      // TODO: Handle blank button
+      break;
+      
+    default:
+      Serial.print("Unknown code: 0x");
+      Serial.println((uint32_t)(code & 0xFFFFFFFF), HEX);
+      break;
+  }
+}
 
 void loop()
 {
@@ -174,5 +233,17 @@ void loop()
     {
         publishStatus();
         lastPublish = millis();
+    }
+
+    if (IrReceiver.decode())
+    {
+        uint64_t code = IrReceiver.decodedIRData.decodedRawData;
+
+        if (code != 0)
+        {
+            handleRemoteButton(code);
+        }
+
+        IrReceiver.resume();
     }
 }

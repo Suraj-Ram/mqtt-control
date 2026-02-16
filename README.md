@@ -1,3 +1,11 @@
+Create a secrets.h file to store WiFi credentials
+
+```cpp
+#define WIFI_SSID "your_wifi_ssid"
+#define WIFI_PASSWORD "your_wifi_password"
+```
+
+
 Scan wifi networks
 
 ```cpp
@@ -75,5 +83,41 @@ void setup() {
   Serial.println("WiFi connected");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+}
+```
+
+
+Sniff IR signal pulses
+
+```cpp
+#include <IRremote.h>
+
+#define IR_PIN D2
+
+
+bool ledState = false;
+
+void setup() {
+
+  Serial.begin(115200);
+  delay(1000);  // Give serial monitor time to connect
+  Serial.println("Starting...");
+  // pinMode(LED_PIN, OUTPUT);
+  IrReceiver.begin(IR_PIN, DISABLE_LED_FEEDBACK);
+  Serial.println("IR Receiver Ready");
+}
+
+void loop() {
+  if (IrReceiver.decode()) {
+    // Print everything the library captured
+    IrReceiver.printIRResultShort(&Serial);
+    Serial.println();
+    
+    // Also print raw data for debugging
+    IrReceiver.printIRResultRawFormatted(&Serial, true);
+    Serial.println();
+    
+    IrReceiver.resume();
+  }
 }
 ```
