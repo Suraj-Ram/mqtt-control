@@ -3,15 +3,19 @@
 #include <PubSubClient.h>
 #include <esp_system.h>
 #include <IRremote.h>
+#include <RCSwitch.h>
 
 #include "secrets.h"
 #include "config.h"
 
 #define LED_PIN D10
 #define IR_RECEIVER_PIN D2
+#define RF_TX_PIN 2 // D0
 
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
+RCSwitch mySwitch = RCSwitch();
+
 
 unsigned long lastPublish = 0;
 const long publishInterval = 5000; // Publish every 5 seconds
@@ -69,6 +73,10 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         {
             Serial.println("Turning LED ON");
             digitalWrite(LED_PIN, HIGH);
+
+            Serial.println("Sending RF signal");
+            mySwitch.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
+            Serial.println("RF signal sent");
         }
         else if (message == "off")
         {
@@ -128,6 +136,14 @@ void initIRReceiver()
     Serial.println("IR Receiver initialized");
 }
 
+void initRFTransmitter() 
+{
+    mySwitch.enableTransmit(RF_TX_PIN);
+    mySwitch.setPulseLength(RF_PULSE_LEN);
+    mySwitch.setProtocol(RF_PROTOCOL);
+    mySwitch.setRepeatTransmit(20);
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -137,6 +153,7 @@ void setup()
     initPins();
     initMQTT();
     initIRReceiver();
+    initRFTransmitter();
 }
 
 String getResetReason()
