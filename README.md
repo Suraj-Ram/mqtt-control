@@ -138,3 +138,186 @@ void loop() {
   }
 }
 ```
+
+
+Sniff RF remote signals
+```cpp
+#include <RCSwitch.h>
+
+#define MIDDLE_BUTTON 10325253
+
+RCSwitch mySwitch = RCSwitch();
+
+void setup() {
+  Serial.begin(115200);
+  Serial.println("\n433 MHz RF Sniffer Started");
+  Serial.println("Waiting for signals...\n");
+  
+  // Receiver on GPIO4 (D2 on NodeMCU/Wemos)
+  mySwitch.enableReceive(4);  // Use GPIO number, not D2
+}
+
+void loop() {
+  if (mySwitch.available()) {
+    Serial.println("========== Signal Received ==========");
+    
+    // Decimal value
+    Serial.print("Decimal: ");
+    Serial.println(mySwitch.getReceivedValue());
+    
+    // Bit length
+    Serial.print("Bit Length: ");
+    Serial.print(mySwitch.getReceivedBitlength());
+    Serial.println(" bits");
+    
+    // Protocol
+    Serial.print("Protocol: ");
+    Serial.println(mySwitch.getReceivedProtocol());
+    
+    // Pulse length
+    Serial.print("Pulse Length: ");
+    Serial.print(mySwitch.getReceivedDelay());
+    Serial.println(" µs");
+    
+    // Binary representation
+    Serial.print("Binary: ");
+    Serial.println(toBinary(mySwitch.getReceivedValue(), mySwitch.getReceivedBitlength()));
+    
+    // Raw data pointer (for advanced use)
+    unsigned int* raw = mySwitch.getReceivedRawdata();
+    Serial.print("Raw Timings: ");
+    for (int i = 0; i < mySwitch.getReceivedBitlength() * 2; i++) {
+      Serial.print(raw[i]);
+      Serial.print(" ");
+    }
+    Serial.println("\n");
+    
+    mySwitch.resetAvailable();
+  }
+}
+
+// Helper function to convert to binary string
+String toBinary(unsigned long value, unsigned int bitLength) {
+  String binary = "";
+  for (int i = bitLength - 1; i >= 0; i--) {
+    binary += ((value >> i) & 1) ? "1" : "0";
+  }
+  return binary;
+}
+```
+
+Send remote values via Serial
+
+```cpp
+#include <RCSwitch.h>
+
+// RF codes from your remote
+#define BUTTON_TIMER_1H  10325249
+#define BUTTON_POWER     10325250
+#define BUTTON_B_UP      10325251
+#define BUTTON_CT_UP     10325254
+#define BUTTON_B_DOWN    10325255
+#define BUTTON_CT_DOWN   10325252
+#define BUTTON_WHITE     10325253
+#define BUTTON_K         10325256
+#define BUTTON_NIGHT     10325257
+#define BUTTON_BOTTLE    10325258
+#define BUTTON_COMPUTER  10325259
+#define BUTTON_READING   10325260
+
+// Adjust these based on your sniffed values
+#define RF_PROTOCOL    1
+#define RF_PULSE_LEN   380
+#define RF_BIT_LENGTH  24
+#define TX_PIN         5  // GPIO5 (D1 on NodeMCU)
+
+RCSwitch mySwitch = RCSwitch();
+
+
+void setup() {
+  Serial.begin(115200);
+  
+  mySwitch.enableTransmit(TX_PIN);
+  mySwitch.setProtocol(RF_PROTOCOL);
+  mySwitch.setPulseLength(RF_PULSE_LEN);
+  
+  printMenu();
+}
+
+void loop() {
+  if (Serial.available()) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    input.toLowerCase();
+    
+    unsigned long code = parseCommand(input);
+    
+    if (code > 0) {
+      Serial.print("Transmitting: ");
+      Serial.println(code);
+      mySwitch.send(code, RF_BIT_LENGTH);
+      Serial.println("Sent!\n");
+    } else {
+      Serial.println("Unknown command. Type 'help' for options.\n");
+    }
+  }
+}
+
+unsigned long parseCommand(String cmd) {
+  // Named commands
+  if (cmd == "power" || cmd == "p")        return BUTTON_POWER;
+  if (cmd == "timer" || cmd == "t")        return BUTTON_TIMER_1H;
+  if (cmd == "bup" || cmd == "b+")         return BUTTON_B_UP;
+  if (cmd == "bdown" || cmd == "b-")       return BUTTON_B_DOWN;
+  if (cmd == "ctup" || cmd == "ct+")       return BUTTON_CT_UP;
+  if (cmd == "ctdown" || cmd == "ct-")     return BUTTON_CT_DOWN;
+  if (cmd == "white" || cmd == "w")        return BUTTON_WHITE;
+  if (cmd == "k")                          return BUTTON_K;
+  if (cmd == "night" || cmd == "n")        return BUTTON_NIGHT;
+  if (cmd == "bottle")                     return BUTTON_BOTTLE;
+  if (cmd == "computer" || cmd == "c")     return BUTTON_COMPUTER;
+  if (cmd == "reading" || cmd == "r")      return BUTTON_READING;
+  
+  if (cmd == "help" || cmd == "?") {
+    printMenu();
+    return 0;
+  }
+  
+  // Allow raw numeric input
+  if (cmd.length() > 0 && isDigit(cmd[0])) {
+    return cmd.toInt();
+  }
+  
+  return 0;
+}
+
+void printMenu() {
+  Serial.println("\n===== 433 MHz Light Remote =====");
+  Serial.println("Commands:");
+  Serial.println("  power, p     - Power on/off");
+  Serial.println("  timer, t     - 1 hour timer");
+  Serial.println("  bup, b+      - Brightness up");
+  Serial.println("  bdown, b-    - Brightness down");
+  Serial.println("  ctup, ct+    - Color temp up");
+  Serial.println("  ctdown, ct-  - Color temp down");
+  Serial.println("  white, w     - White mode");
+  Serial.println("  k            - K mode");
+  Serial.println("  night, n     - Night light");
+  Serial.println("  bottle       - Bottle mode");
+  Serial.println("  computer, c  - Computer mode");
+  Serial.println("  reading, r   - Reading mode");
+  Serial.println("  <number>     - Send raw code");
+  Serial.println("  help, ?      - Show this menu");
+  Serial.println("================================\n");
+}
+
+
+// Helper function to convert to binary string
+String toBinary(unsigned long value, unsigned int bitLength) {
+  String binary = "";
+  for (int i = bitLength - 1; i >= 0; i--) {
+    binary += ((value >> i) & 1) ? "1" : "0";
+  }
+  return binary;
+}
+```
