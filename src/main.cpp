@@ -24,7 +24,7 @@ const long publishInterval = 60000; // Publish every 60 seconds
 // Ignore our own transmissions
 volatile bool isTransmitting = false;
 unsigned long lastTxTime = 0;
-#define TX_IGNORE_MS 100 // Ignore RX for 100ms after TX
+#define TX_IGNORE_MS 150 // Ignore RX for 100ms after TX
 
 void flickerLed()
 {
@@ -83,6 +83,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
             Serial.println("Sending RF signal");
             txSwitch.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
             Serial.println("RF signal sent");
+            lastTxTime = millis();
         }
         else if (message == "off")
         {
