@@ -11,14 +11,20 @@
 #define LED_PIN D10
 #define IR_RECEIVER_PIN D2
 #define RF_TX_PIN 2 // D0
+#define RF_RX_PIN 5 // D3
 
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
-RCSwitch mySwitch = RCSwitch();
-
+RCSwitch txSwitch = RCSwitch();
+RCSwitch rxSwitch = RCSwitch();
 
 unsigned long lastPublish = 0;
-const long publishInterval = 5000; // Publish every 5 seconds
+const long publishInterval = 60000; // Publish every 60 seconds
+
+// Ignore our own transmissions
+volatile bool isTransmitting = false;
+unsigned long lastTxTime = 0;
+#define TX_IGNORE_MS 100 // Ignore RX for 100ms after TX
 
 void flickerLed()
 {
@@ -75,7 +81,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
             digitalWrite(LED_PIN, HIGH);
 
             Serial.println("Sending RF signal");
-            mySwitch.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
+            txSwitch.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
             Serial.println("RF signal sent");
         }
         else if (message == "off")
@@ -136,12 +142,38 @@ void initIRReceiver()
     Serial.println("IR Receiver initialized");
 }
 
-void initRFTransmitter() 
+void initRFTransmitter()
 {
-    mySwitch.enableTransmit(RF_TX_PIN);
-    mySwitch.setPulseLength(RF_PULSE_LEN);
-    mySwitch.setProtocol(RF_PROTOCOL);
-    mySwitch.setRepeatTransmit(20);
+    txSwitch.enableTransmit(RF_TX_PIN);
+    txSwitch.setPulseLength(RF_PULSE_LEN);
+    txSwitch.setProtocol(RF_PROTOCOL);
+    txSwitch.setRepeatTransmit(20);
+}
+
+void initRFReceiver()
+{
+    rxSwitch.enableReceive(RF_RX_PIN);
+}
+
+void checkRFReceiver()
+{
+    if (!rxSwitch.available())
+        return;
+
+    unsigned long code = rxSwitch.getReceivedValue();
+    rxSwitch.resetAvailable();
+
+    // Ignore if we just transmitted (would pick up our own signal)
+    if (millis() - lastTxTime < TX_IGNORE_MS)
+        return;
+
+    // Ignore invalid codes
+    if (code == 0)
+        return;
+
+    // Process the received code
+    Serial.print("Received RF code: ");
+    Serial.println(code, HEX);
 }
 
 void setup()
@@ -154,6 +186,7 @@ void setup()
     initMQTT();
     initIRReceiver();
     initRFTransmitter();
+    initRFReceiver();
 }
 
 String getResetReason()
@@ -193,46 +226,48 @@ void publishStatus()
     mqtt.publish(TOPIC_UPTIME, json.c_str());
 }
 
-void handleRemoteButton(uint64_t code) {
+void handleRemoteButton(uint64_t code)
+{
     // publish ir button press
     mqtt.publish(TOPIC_IR_BUTTON_PRESS, String(code, HEX).c_str());
 
-  switch (code) {
+    switch (code)
+    {
     case BUTTON_1:
         Serial.println("Fan speed pressed");
-      // TODO: Toggle fan power
-      break;
-      
+        // TODO: Toggle fan power
+        break;
+
     case BUTTON_2:
-      Serial.println("Power pressed");
-      // TODO: Toggle fan power
-      break;
-      
+        Serial.println("Power pressed");
+        // TODO: Toggle fan power
+        break;
+
     case BUTTON_3:
-      Serial.println("Blank pressed");
-      // TODO: Handle blank button
-      break;
-      
+        Serial.println("Blank pressed");
+        // TODO: Handle blank button
+        break;
+
     case BUTTON_4:
-      Serial.println("Timer pressed");
-      // TODO: Cycle timer setting
-      break;
-      
+        Serial.println("Timer pressed");
+        // TODO: Cycle timer setting
+        break;
+
     case BUTTON_5:
-      Serial.println("Blank pressed");
-      // TODO: Handle blank button
-      break;
-      
+        Serial.println("Blank pressed");
+        // TODO: Handle blank button
+        break;
+
     case BUTTON_6:
-      Serial.println("Blank pressed");
-      // TODO: Handle blank button
-      break;
-      
+        Serial.println("Blank pressed");
+        // TODO: Handle blank button
+        break;
+
     default:
-      Serial.print("Unknown code: 0x");
-      Serial.println((uint32_t)(code & 0xFFFFFFFF), HEX);
-      break;
-  }
+        Serial.print("Unknown code: 0x");
+        Serial.println((uint32_t)(code & 0xFFFFFFFF), HEX);
+        break;
+    }
 }
 
 void loop()
@@ -266,4 +301,7 @@ void loop()
 
         IrReceiver.resume();
     }
+
+    // Check for RF signals from physical remote
+    checkRFReceiver();
 }
