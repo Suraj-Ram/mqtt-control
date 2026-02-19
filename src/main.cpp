@@ -4,6 +4,7 @@
 #include <esp_system.h>
 #include <IRremote.h>
 #include <RCSwitch.h>
+#include <ArduinoJson.h>
 
 #include "secrets.h"
 #include "config.h"
@@ -13,10 +14,50 @@
 #define RF_TX_PIN 2 // D0
 #define RF_RX_PIN 5 // D3
 
+struct LampState
+{
+    bool power = false;
+    uint8_t brightness = 10; // Whole numbers between 1 and 10 inclusive
+
+    // void setPowerOn()
+    // {
+    //     power = true;
+    // }
+    // void setPowerOff()
+    // {
+    //     power = false;
+    // }
+
+    // get json representation of the lamp state
+    String toJson() {
+        StaticJsonDocument<200> doc;
+        doc["power"] = power ? "on" : "off";
+        doc["brightness"] = brightness;
+        String json;
+        serializeJson(doc, json);
+        return json;
+    }
+
+
+    void updatePowerState(bool newPowerState, PubSubClient& mqttClient)
+    {
+        power = newPowerState;
+        mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
+    }
+
+    void updateBrightness(uint8_t newBrightness, PubSubClient& mqttClient)
+    {
+        brightness = newBrightness;
+        mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
+    }
+};
+
 WiFiClient espClient;
 PubSubClient mqtt(espClient);
 RCSwitch txSwitch = RCSwitch();
 RCSwitch rxSwitch = RCSwitch();
+
+LampState lampState;
 
 unsigned long lastPublish = 0;
 const long publishInterval = 60000; // Publish every 60 seconds
@@ -25,6 +66,12 @@ const long publishInterval = 60000; // Publish every 60 seconds
 volatile bool isTransmitting = false;
 unsigned long lastTxTime = 0;
 #define TX_IGNORE_MS 150 // Ignore RX for 100ms after TX
+
+
+
+// Lamp service methods. Methods that use the RF transmitter and receiver to update the lamp and its state go here
+// TODO add here
+
 
 void flickerLed()
 {
@@ -77,18 +124,37 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     {
         if (message == "on")
         {
-            Serial.println("Turning LED ON");
-            digitalWrite(LED_PIN, HIGH);
+            // Serial.println("Turning LED ON");
+            // digitalWrite(LED_PIN, HIGH);
+
+            if (lampState.power) {
+                Serial.println("Lamp is already ON, ignoring command");
+                return;
+            }
 
             Serial.println("Sending RF signal");
             txSwitch.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
-            Serial.println("RF signal sent");
             lastTxTime = millis();
+            Serial.println("RF signal sent");
+
+            lampState.updatePowerState(true, mqtt);
         }
         else if (message == "off")
         {
-            Serial.println("Turning LED OFF");
-            digitalWrite(LED_PIN, LOW);
+            // Serial.println("Turning LED OFF");
+            // digitalWrite(LED_PIN, LOW);
+
+            if (!lampState.power) {
+                Serial.println("Lamp is already OFF, ignoring command");
+                return;
+            }
+
+            Serial.println("Sending RF signal");
+            txSwitch.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
+            lastTxTime = millis();
+            Serial.println("RF signal sent");   
+
+            lampState.updatePowerState(false, mqtt);
         }
         else if (message == "flicker")
         {
@@ -285,8 +351,6 @@ void checkIRReceiver()
         IrReceiver.resume();
     }
 }
-
-
 
 void loop()
 {
