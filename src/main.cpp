@@ -14,6 +14,11 @@
 #define RF_TX_PIN 2 // D0
 #define RF_RX_PIN 5 // D3
 
+WiFiClient espClient;
+PubSubClient mqtt(espClient);
+RCSwitch txSwitch = RCSwitch();
+RCSwitch rxSwitch = RCSwitch();
+
 struct LampState
 {
     bool power = false;
@@ -29,7 +34,8 @@ struct LampState
     // }
 
     // get json representation of the lamp state
-    String toJson() {
+    String toJson()
+    {
         JsonDocument doc;
         doc["power"] = power ? "on" : "off";
         doc["brightness"] = brightness;
@@ -38,24 +44,29 @@ struct LampState
         return json;
     }
 
-
-    void updatePowerState(bool newPowerState, PubSubClient& mqttClient)
+    // If makeChange is true, we need to make the change in real life by sending the correct remote action via RF
+    void updatePowerState(bool newPowerState, PubSubClient &mqttClient, bool makeChange = false, RCSwitch &RF_TX_Client = txSwitch)
     {
         power = newPowerState;
+
+        if (makeChange && ((power && !newPowerState)))
+        {
+            Serial.println("Sending RF signal to change power state");
+            RF_TX_Client.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
+            // lastTxTime = millis();
+            Serial.println("RF signal sent");
+        }
         mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
     }
 
-    void updateBrightness(uint8_t newBrightness, PubSubClient& mqttClient)
+    void updateBrightness(uint8_t newBrightness, PubSubClient &mqttClient)
     {
         brightness = newBrightness;
         mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
     }
 };
 
-WiFiClient espClient;
-PubSubClient mqtt(espClient);
-RCSwitch txSwitch = RCSwitch();
-RCSwitch rxSwitch = RCSwitch();
+
 
 LampState lampState;
 
@@ -67,11 +78,8 @@ volatile bool isTransmitting = false;
 unsigned long lastTxTime = 0;
 #define TX_IGNORE_MS 150 // Ignore RX for 100ms after TX
 
-
-
 // Lamp service methods. Methods that use the RF transmitter and receiver to update the lamp and its state go here
 // TODO add here
-
 
 void flickerLed()
 {
@@ -105,6 +113,33 @@ void connectWifi()
     Serial.println(WiFi.localIP());
 }
 
+void handleMqttLampMessages(String message)
+{
+    // Handles messages sent to TOPIC_LAMP_CONTROL
+
+    // deserialize json message
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, message);
+    if (error)
+    {
+        Serial.print("Failed to parse JSON: ");
+        Serial.println(error.c_str());
+        return;
+    }
+
+    bool newPowerState = doc["power"] == "on" || lampState.power;     // Use existing power state if not provided
+    uint8_t newBrightness = doc["brightness"] | lampState.brightness; // Use existing brightness if not provided
+    Serial.println("new states:");
+    Serial.print("Power: ");
+    Serial.println(newPowerState ? "ON" : "OFF");
+    Serial.print("Brightness: ");
+    Serial.println(newBrightness);
+
+    // Update lamp state and publish new state
+    lampState.updatePowerState(newPowerState, mqtt);
+    lampState.updateBrightness(newBrightness, mqtt);
+}
+
 void mqttCallback(char *topic, byte *payload, unsigned int length)
 {
     String message;
@@ -127,7 +162,8 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
             // Serial.println("Turning LED ON");
             // digitalWrite(LED_PIN, HIGH);
 
-            if (lampState.power) {
+            if (lampState.power)
+            {
                 Serial.println("Lamp is already ON, ignoring command");
                 return;
             }
@@ -144,7 +180,8 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
             // Serial.println("Turning LED OFF");
             // digitalWrite(LED_PIN, LOW);
 
-            if (!lampState.power) {
+            if (!lampState.power)
+            {
                 Serial.println("Lamp is already OFF, ignoring command");
                 return;
             }
@@ -152,7 +189,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
             Serial.println("Sending RF signal");
             txSwitch.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
             lastTxTime = millis();
-            Serial.println("RF signal sent");   
+            Serial.println("RF signal sent");
 
             lampState.updatePowerState(false, mqtt);
         }
@@ -161,6 +198,10 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
             Serial.println("Flickering LED");
             flickerLed();
         }
+    }
+    else if (topicStr == TOPIC_LAMP_CONTROL)
+    {
+        handleMqttLampMessages(message);
     }
 }
 
@@ -223,37 +264,37 @@ void initRFReceiver()
 }
 
 void handleRFButtonPress(unsigned long code)
-// Process the received RF code and update lamp state accordingly. 
-// This only updates the internal state and not the actual lamp since 
+// Process the received RF code and update lamp state accordingly.
+// This only updates the internal state and not the actual lamp since
 // we assume the physical remote will hit the lamp directly.
 {
     Serial.print("Received RF code: ");
     Serial.println(code, HEX);
 
     switch (code)
-    {    
-        case BUTTON_POWER:
-            Serial.println("Power button pressed");
-            lampState.updatePowerState(!lampState.power, mqtt);
-            break;
-        case BUTTON_B_UP:
-            Serial.println("Brightness Up button pressed");
-            if (lampState.brightness < 10) {
-                lampState.updateBrightness(lampState.brightness + 1, mqtt);
-            }
-            break;
-        case BUTTON_B_DOWN:
-            Serial.println("Brightness Down button pressed");
-            if (lampState.brightness > 0) {
-                lampState.updateBrightness(lampState.brightness - 1, mqtt);
-            }
-            break;
-        default:
-            Serial.println("Unknown RF code received");
-            break;
-
+    {
+    case BUTTON_POWER:
+        Serial.println("Power button pressed");
+        lampState.updatePowerState(!lampState.power, mqtt);
+        break;
+    case BUTTON_B_UP:
+        Serial.println("Brightness Up button pressed");
+        if (lampState.brightness < 10)
+        {
+            lampState.updateBrightness(lampState.brightness + 1, mqtt);
+        }
+        break;
+    case BUTTON_B_DOWN:
+        Serial.println("Brightness Down button pressed");
+        if (lampState.brightness > 0)
+        {
+            lampState.updateBrightness(lampState.brightness - 1, mqtt);
+        }
+        break;
+    default:
+        Serial.println("Unknown RF code received");
+        break;
     }
-
 }
 
 void checkRFReceiver()

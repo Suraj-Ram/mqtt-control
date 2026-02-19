@@ -9,7 +9,7 @@
 #define TOPIC_IR_BUTTON_PRESS "esp_iot/controls/ir_remote/press"
 
 #define TOPIC_LAMP_STATE "esp_iot/lamp/state"
-
+#define TOPIC_LAMP_CONTROL "esp_iot/lamp/set"
 
 // IR Remote Buttons
 // Remote codes for my fan remote
