@@ -271,6 +271,23 @@ void handleRemoteButton(uint64_t code)
     }
 }
 
+void checkIRReceiver()
+{
+    if (IrReceiver.decode())
+    {
+        uint64_t code = IrReceiver.decodedIRData.decodedRawData;
+
+        if (code != 0)
+        {
+            handleRemoteButton(code);
+        }
+
+        IrReceiver.resume();
+    }
+}
+
+
+
 void loop()
 {
     if (WiFi.status() != WL_CONNECTED)
@@ -291,18 +308,6 @@ void loop()
         lastPublish = millis();
     }
 
-    if (IrReceiver.decode())
-    {
-        uint64_t code = IrReceiver.decodedIRData.decodedRawData;
-
-        if (code != 0)
-        {
-            handleRemoteButton(code);
-        }
-
-        IrReceiver.resume();
-    }
-
-    // Check for RF signals from physical remote
+    checkIRReceiver();
     checkRFReceiver();
 }
