@@ -17,7 +17,7 @@
 struct LampState
 {
     bool power = false;
-    uint8_t brightness = 10; // Whole numbers between 1 and 10 inclusive
+    uint8_t brightness = 10; // Whole numbers between 0 and 10 inclusive
 
     // void setPowerOn()
     // {
@@ -30,7 +30,7 @@ struct LampState
 
     // get json representation of the lamp state
     String toJson() {
-        StaticJsonDocument<200> doc;
+        JsonDocument doc;
         doc["power"] = power ? "on" : "off";
         doc["brightness"] = brightness;
         String json;
@@ -222,6 +222,40 @@ void initRFReceiver()
     rxSwitch.enableReceive(RF_RX_PIN);
 }
 
+void handleRFButtonPress(unsigned long code)
+// Process the received RF code and update lamp state accordingly. 
+// This only updates the internal state and not the actual lamp since 
+// we assume the physical remote will hit the lamp directly.
+{
+    Serial.print("Received RF code: ");
+    Serial.println(code, HEX);
+
+    switch (code)
+    {    
+        case BUTTON_POWER:
+            Serial.println("Power button pressed");
+            lampState.updatePowerState(!lampState.power, mqtt);
+            break;
+        case BUTTON_B_UP:
+            Serial.println("Brightness Up button pressed");
+            if (lampState.brightness < 10) {
+                lampState.updateBrightness(lampState.brightness + 1, mqtt);
+            }
+            break;
+        case BUTTON_B_DOWN:
+            Serial.println("Brightness Down button pressed");
+            if (lampState.brightness > 0) {
+                lampState.updateBrightness(lampState.brightness - 1, mqtt);
+            }
+            break;
+        default:
+            Serial.println("Unknown RF code received");
+            break;
+
+    }
+
+}
+
 void checkRFReceiver()
 {
     if (!rxSwitch.available())
@@ -240,7 +274,7 @@ void checkRFReceiver()
 
     // Process the received code
     Serial.print("Received RF code: ");
-    Serial.println(code, HEX);
+    handleRFButtonPress(code);
 }
 
 void setup()
