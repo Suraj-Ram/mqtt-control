@@ -8,6 +8,7 @@
 
 #include "secrets.h"
 #include "config.h"
+#include "debug_utils.h"
 
 #define LED_PIN D10
 #define IR_RECEIVER_PIN D2
@@ -47,21 +48,36 @@ struct LampState
     // If makeChange is true, we need to make the change in real life by sending the correct remote action via RF
     void updatePowerState(bool newPowerState, PubSubClient &mqttClient, bool makeChange = false, RCSwitch &RF_TX_Client = txSwitch)
     {
-        power = newPowerState;
 
-        if (makeChange && ((power && !newPowerState)))
+        debugPrint("calling update power state", mqttClient);
+
+        // debug print the current state and the given args
+        debugPrint((String("Current power state: ") + String(power)).c_str(), mqttClient);
+        debugPrint((String("New power state: ") + String(newPowerState)).c_str(), mqttClient);
+
+
+        if (makeChange && (power != newPowerState))
         {
             Serial.println("Sending RF signal to change power state");
+            
+            power = newPowerState; 
+            
             RF_TX_Client.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
             // lastTxTime = millis();
             Serial.println("RF signal sent");
         }
+
         mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
     }
 
-    void updateBrightness(uint8_t newBrightness, PubSubClient &mqttClient)
+    void updateBrightness(uint8_t newBrightness, PubSubClient &mqttClient, bool makeChange = false, RCSwitch &RF_TX_Client = txSwitch)
     {
         brightness = newBrightness;
+        if (makeChange)
+        {
+            Serial.println("Will send RF signal to change brightness");
+            debugPrint("Sending RF signal to change brightness NOT IMPLEMENTED YET", mqttClient);
+        }
         mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
     }
 };
@@ -71,7 +87,7 @@ struct LampState
 LampState lampState;
 
 unsigned long lastPublish = 0;
-const long publishInterval = 60000; // Publish every 60 seconds
+const long publishInterval = 10000000; // Publish every 60 seconds
 
 // Ignore our own transmissions
 volatile bool isTransmitting = false;
@@ -117,6 +133,8 @@ void handleMqttLampMessages(String message)
 {
     // Handles messages sent to TOPIC_LAMP_CONTROL
 
+    Serial.println("Handling lamp control message:");
+
     // deserialize json message
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, message);
@@ -127,17 +145,38 @@ void handleMqttLampMessages(String message)
         return;
     }
 
-    bool newPowerState = doc["power"] == "on" || lampState.power;     // Use existing power state if not provided
-    uint8_t newBrightness = doc["brightness"] | lampState.brightness; // Use existing brightness if not provided
-    Serial.println("new states:");
-    Serial.print("Power: ");
-    Serial.println(newPowerState ? "ON" : "OFF");
-    Serial.print("Brightness: ");
-    Serial.println(newBrightness);
+    // serial print incoming json 
+    Serial.println("Received JSON:");
+    serializeJsonPretty(doc, Serial);
+    Serial.println();
+
+    bool newPower;
+    uint8_t newBrightness;
+
+    // if json contains power field update power state, if it contains brightness field update brightness. If a field is not provided, keep the same state for that field
+    if (doc.containsKey("power")) {
+        bool newPower = doc["power"] == "on" ? true : false;
+        lampState.updatePowerState(newPower, mqtt, true, txSwitch);
+    }
+    
+    if (doc.containsKey("brightness")) {
+        uint8_t newBrightness = doc["brightness"];
+        lampState.updateBrightness(newBrightness, mqtt, true, txSwitch);
+    }
+
+
+
+    // bool newPowerState = doc["power"] == "on" || lampState.power;     // Use existing power state if not provided
+    // uint8_t newBrightness = doc["brightness"] | lampState.brightness; // Use existing brightness if not provided
+    // Serial.println("new states:");
+    // Serial.print("Power: ");
+    // Serial.println(newPowerState ? "ON" : "OFF");
+    // Serial.print("Brightness: ");
+    // Serial.println(newBrightness);
 
     // Update lamp state and publish new state
-    lampState.updatePowerState(newPowerState, mqtt);
-    lampState.updateBrightness(newBrightness, mqtt);
+    // lampState.updatePowerState(newPowerState, mqtt);
+    // lampState.updateBrightness(newBrightness, mqtt);
 }
 
 void mqttCallback(char *topic, byte *payload, unsigned int length)
@@ -443,6 +482,7 @@ void loop()
     // Publish periodically
     if (millis() - lastPublish > publishInterval)
     {
+        debugPrint("Publishing status update", mqtt);
         publishStatus();
         lastPublish = millis();
     }

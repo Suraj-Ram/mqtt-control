@@ -11,6 +11,8 @@
 #define TOPIC_LAMP_STATE "esp_iot/lamp/state"
 #define TOPIC_LAMP_CONTROL "esp_iot/lamp/set"
 
+#define TOPIC_DEBUG_LOG "esp_iot/dev/log"
+
 // IR Remote Buttons
 // Remote codes for my fan remote
 // The buttons are numbered moving left to right, top to bottom

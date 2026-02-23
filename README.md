@@ -1,6 +1,8 @@
 
 
 MQTT topics:
+esp_iot/dev/log
+
 esp_iot/uptime - publishes device info every 5 seconds
 esp_iot/led/set - used to set the LED state (payload: "on" or "off")
 esp_iot/led/state - publishes the current LED state
