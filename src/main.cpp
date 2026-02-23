@@ -20,6 +20,15 @@ PubSubClient mqtt(espClient);
 RCSwitch txSwitch = RCSwitch();
 RCSwitch rxSwitch = RCSwitch();
 
+unsigned long lastPublish = 0;
+const long publishInterval = 10000000; // Publish every 60 seconds
+
+// Ignore our own transmissions
+volatile bool isTransmitting = false;
+unsigned long lastTxTime = 0;
+#define TX_IGNORE_MS 200 // Ignore RX for 200ms after TX, need to fine tune this value and get it as low as possible.
+
+
 struct LampState
 {
     bool power = false;
@@ -46,25 +55,31 @@ struct LampState
     }
 
     // If makeChange is true, we need to make the change in real life by sending the correct remote action via RF
-    void updatePowerState(bool newPowerState, PubSubClient &mqttClient, bool makeChange = false, RCSwitch &RF_TX_Client = txSwitch)
+    void updatePowerState(bool newPowerState, PubSubClient &mqttClient, bool sendRemoteSignal = false, RCSwitch &RF_TX_Client = txSwitch)
     {
 
         debugPrint("calling update power state", mqttClient);
+        debugPrint("OLD STATE OBJECT", mqttClient);
+        debugPrint(toJson().c_str(), mqttClient);
 
         // debug print the current state and the given args
         debugPrint((String("Current power state: ") + String(power)).c_str(), mqttClient);
         debugPrint((String("New power state: ") + String(newPowerState)).c_str(), mqttClient);
 
 
-        if (makeChange && (power != newPowerState))
+        if ((power != newPowerState))
         {
-            Serial.println("Sending RF signal to change power state");
             
             power = newPowerState; 
+
+            if (sendRemoteSignal) 
+                Serial.println("Sending RF signal to change power state");
+                RF_TX_Client.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
+                // TODO figure out a global way to set this. Ideally all RF operations will be delegated to a class that internally sets this.
+                lastTxTime = millis();
+                debugPrint((String("Last TX time: ") + String(lastTxTime)).c_str(), mqttClient);
+                Serial.println("RF signal sent");
             
-            RF_TX_Client.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
-            // lastTxTime = millis();
-            Serial.println("RF signal sent");
         }
 
         mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
@@ -82,17 +97,9 @@ struct LampState
     }
 };
 
-
-
 LampState lampState;
 
-unsigned long lastPublish = 0;
-const long publishInterval = 10000000; // Publish every 60 seconds
 
-// Ignore our own transmissions
-volatile bool isTransmitting = false;
-unsigned long lastTxTime = 0;
-#define TX_IGNORE_MS 150 // Ignore RX for 100ms after TX
 
 // Lamp service methods. Methods that use the RF transmitter and receiver to update the lamp and its state go here
 // TODO add here
@@ -155,8 +162,12 @@ void handleMqttLampMessages(String message)
 
     // if json contains power field update power state, if it contains brightness field update brightness. If a field is not provided, keep the same state for that field
     if (doc.containsKey("power")) {
-        bool newPower = doc["power"] == "on" ? true : false;
-        lampState.updatePowerState(newPower, mqtt, true, txSwitch);
+        bool validPowerValue = (doc["power"] == "on" || doc["power"] == "off");
+        if (validPowerValue) {
+            bool newPower = doc["power"] == "on" ? true : false;
+            lampState.updatePowerState(newPower, mqtt, true, txSwitch);
+
+        }
     }
     
     if (doc.containsKey("brightness")) {
@@ -314,7 +325,7 @@ void handleRFButtonPress(unsigned long code)
     {
     case BUTTON_POWER:
         Serial.println("Power button pressed");
-        lampState.updatePowerState(!lampState.power, mqtt);
+        lampState.updatePowerState(!lampState.power, mqtt, false, txSwitch);
         break;
     case BUTTON_B_UP:
         Serial.println("Brightness Up button pressed");
