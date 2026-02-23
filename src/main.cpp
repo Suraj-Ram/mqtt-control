@@ -28,7 +28,6 @@ volatile bool isTransmitting = false;
 unsigned long lastTxTime = 0;
 #define TX_IGNORE_MS 200 // Ignore RX for 200ms after TX, need to fine tune this value and get it as low as possible.
 
-
 struct LampState
 {
     bool power = false;
@@ -66,40 +65,64 @@ struct LampState
         debugPrint((String("Current power state: ") + String(power)).c_str(), mqttClient);
         debugPrint((String("New power state: ") + String(newPowerState)).c_str(), mqttClient);
 
-
         if ((power != newPowerState))
         {
-            
-            power = newPowerState; 
 
-            if (sendRemoteSignal) 
+            power = newPowerState;
+
+            if (sendRemoteSignal)
                 Serial.println("Sending RF signal to change power state");
-                RF_TX_Client.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
-                // TODO figure out a global way to set this. Ideally all RF operations will be delegated to a class that internally sets this.
-                lastTxTime = millis();
-                debugPrint((String("Last TX time: ") + String(lastTxTime)).c_str(), mqttClient);
-                Serial.println("RF signal sent");
-            
+            RF_TX_Client.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
+            // TODO figure out a global way to set this. Ideally all RF operations will be delegated to a class that internally sets this.
+            lastTxTime = millis();
+            debugPrint((String("Last TX time: ") + String(lastTxTime)).c_str(), mqttClient);
+            Serial.println("RF signal sent");
         }
 
         mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
     }
 
-    void updateBrightness(uint8_t newBrightness, PubSubClient &mqttClient, bool makeChange = false, RCSwitch &RF_TX_Client = txSwitch)
+    void updateBrightness(uint8_t newBrightness, PubSubClient &mqttClient, bool sendRemoteSignal = false, RCSwitch &RF_TX_Client = txSwitch)
     {
-        brightness = newBrightness;
-        if (makeChange)
+        const int B_CHANGE_DELAY_MS = 500; // Delay between brightness change signals, need to fine tune this value
+
+        if (newBrightness == brightness)
         {
-            Serial.println("Will send RF signal to change brightness");
-            debugPrint("Sending RF signal to change brightness NOT IMPLEMENTED YET", mqttClient);
+            debugPrint("updateBrightness called with same value, skipping update.", mqttClient);
+            return;
         }
+
+        int difference = newBrightness - brightness;
+        brightness = newBrightness;
+
+        if (sendRemoteSignal)
+        {
+            isTransmitting = true;
+            if (difference > 0)
+            {
+                for (int i = 0; i < difference; i++)
+                {
+                    RF_TX_Client.send(BUTTON_B_UP, RF_BIT_LENGTH); // Send brightness up signal
+                    delay(B_CHANGE_DELAY_MS);                      // Small delay between signals
+                }
+            }
+            else
+            {
+                for (int i = 0; i < -difference; i++)
+                {
+                    RF_TX_Client.send(BUTTON_B_DOWN, RF_BIT_LENGTH); // Send brightness down signal
+                    delay(B_CHANGE_DELAY_MS);                        // Small delay between signals
+                }
+            }
+            isTransmitting = false;
+            Serial.println("RF signals sent to adjust brightness");
+        }
+
         mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
     }
 };
 
 LampState lampState;
-
-
 
 // Lamp service methods. Methods that use the RF transmitter and receiver to update the lamp and its state go here
 // TODO add here
@@ -152,7 +175,7 @@ void handleMqttLampMessages(String message)
         return;
     }
 
-    // serial print incoming json 
+    // serial print incoming json
     Serial.println("Received JSON:");
     serializeJsonPretty(doc, Serial);
     Serial.println();
@@ -161,21 +184,27 @@ void handleMqttLampMessages(String message)
     uint8_t newBrightness;
 
     // if json contains power field update power state, if it contains brightness field update brightness. If a field is not provided, keep the same state for that field
-    if (doc.containsKey("power")) {
+    if (doc.containsKey("power"))
+    {
         bool validPowerValue = (doc["power"] == "on" || doc["power"] == "off");
-        if (validPowerValue) {
+        if (validPowerValue)
+        {
             bool newPower = doc["power"] == "on" ? true : false;
             lampState.updatePowerState(newPower, mqtt, true, txSwitch);
-
         }
     }
-    
-    if (doc.containsKey("brightness")) {
+
+    if (doc.containsKey("brightness"))
+    {
         uint8_t newBrightness = doc["brightness"];
+        // Ensure brightness is between 0 and 10
+        if (newBrightness > 10 || newBrightness < 0)
+        {
+            Serial.println("Brightness value out of range [0-10], ignoring");
+            return;
+        }
         lampState.updateBrightness(newBrightness, mqtt, true, txSwitch);
     }
-
-
 
     // bool newPowerState = doc["power"] == "on" || lampState.power;     // Use existing power state if not provided
     // uint8_t newBrightness = doc["brightness"] | lampState.brightness; // Use existing brightness if not provided
@@ -354,6 +383,13 @@ void checkRFReceiver()
 
     unsigned long code = rxSwitch.getReceivedValue();
     rxSwitch.resetAvailable();
+
+    if (isTransmitting)
+    {
+        Serial.println("Currently transmitting, ignoring received RF signal");
+        debugPrint("Currently transmitting, ignoring received RF signal", mqtt);
+        return;
+    }
 
     // Ignore if we just transmitted (would pick up our own signal)
     if (millis() - lastTxTime < TX_IGNORE_MS)
