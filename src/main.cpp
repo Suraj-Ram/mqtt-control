@@ -28,19 +28,61 @@ volatile bool isTransmitting = false;
 unsigned long lastTxTime = 0;
 #define TX_IGNORE_MS 200 // Ignore RX for 200ms after TX, need to fine tune this value and get it as low as possible.
 
+struct LampControlMessage
+{
+    bool hasPower = false;
+    bool power = false;
+
+    bool hasBrightness = false;
+    uint8_t brightness = 0;
+
+    bool hasColorTemp = false;
+    uint8_t colorTemp = 0; // 0–10, maps to CT_DOWN/CT_UP steps
+
+    static bool parse(const String &json, LampControlMessage &out)
+    {
+        JsonDocument doc;
+        if (deserializeJson(doc, json))
+            return false;
+
+        if (doc.containsKey("power"))
+        {
+            const char *p = doc["power"];
+            if (strcmp(p, "on") == 0 || strcmp(p, "off") == 0)
+            {
+                out.hasPower = true;
+                out.power = strcmp(p, "on") == 0;
+            }
+        }
+
+        if (doc.containsKey("brightness"))
+        {
+            uint8_t b = doc["brightness"];
+            if (b <= 10)
+            {
+                out.hasBrightness = true;
+                out.brightness = b;
+            }
+        }
+
+        if (doc.containsKey("color_temp"))
+        {
+            uint8_t ct = doc["color_temp"];
+            if (ct <= 10)
+            {
+                out.hasColorTemp = true;
+                out.colorTemp = ct;
+            }
+        }
+
+        return true;
+    }
+};
+
 struct LampState
 {
     bool power = false;
     uint8_t brightness = 10; // Whole numbers between 0 and 10 inclusive
-
-    // void setPowerOn()
-    // {
-    //     power = true;
-    // }
-    // void setPowerOff()
-    // {
-    //     power = false;
-    // }
 
     // get json representation of the lamp state
     String toJson()
@@ -167,7 +209,6 @@ void connectWifi()
 void handleMqttLampMessages(String message)
 {
     // Handles messages sent to TOPIC_LAMP_CONTROL
-
     Serial.println("Handling lamp control message:");
 
     // deserialize json message
@@ -210,18 +251,26 @@ void handleMqttLampMessages(String message)
         }
         lampState.updateBrightness(newBrightness, mqtt, true, txSwitch);
     }
+}
 
-    // bool newPowerState = doc["power"] == "on" || lampState.power;     // Use existing power state if not provided
-    // uint8_t newBrightness = doc["brightness"] | lampState.brightness; // Use existing brightness if not provided
-    // Serial.println("new states:");
-    // Serial.print("Power: ");
-    // Serial.println(newPowerState ? "ON" : "OFF");
-    // Serial.print("Brightness: ");
-    // Serial.println(newBrightness);
-
-    // Update lamp state and publish new state
-    // lampState.updatePowerState(newPowerState, mqtt);
-    // lampState.updateBrightness(newBrightness, mqtt);
+void handleSimpleLedTopic(String message)
+{
+    debugPrint("Handling simple LED message", mqtt);
+    if (message == "on")
+    {
+        Serial.println("Turning LED ON");
+        digitalWrite(LED_PIN, HIGH);
+    }
+    else if (message == "off")
+    {
+        Serial.println("Turning LED OFF");
+        digitalWrite(LED_PIN, LOW);
+    }
+    else if (message == "flicker")
+    {
+        Serial.println("Flickering LED");
+        flickerLed();
+    }
 }
 
 void mqttCallback(char *topic, byte *payload, unsigned int length)
@@ -239,50 +288,12 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     Serial.print(message);
     Serial.println();
 
+    // Handle messages for the simple LED topic (non-JSON messages)
     if (topicStr == TOPIC_LED_CONTROL)
     {
-        if (message == "on")
-        {
-            // Serial.println("Turning LED ON");
-            digitalWrite(LED_PIN, HIGH);
-
-            if (lampState.power)
-            {
-                Serial.println("Lamp is already ON, ignoring command");
-                return;
-            }
-
-            Serial.println("Sending RF signal");
-            txSwitch.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
-            lastTxTime = millis();
-            Serial.println("RF signal sent");
-
-            lampState.updatePowerState(true, mqtt);
-        }
-        else if (message == "off")
-        {
-            // Serial.println("Turning LED OFF");
-            digitalWrite(LED_PIN, LOW);
-
-            if (!lampState.power)
-            {
-                Serial.println("Lamp is already OFF, ignoring command");
-                return;
-            }
-
-            Serial.println("Sending RF signal");
-            txSwitch.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
-            lastTxTime = millis();
-            Serial.println("RF signal sent");
-
-            lampState.updatePowerState(false, mqtt);
-        }
-        else if (message == "flicker")
-        {
-            Serial.println("Flickering LED");
-            flickerLed();
-        }
+        handleSimpleLedTopic(message);
     }
+    // Handle JSON-based messages for lamp control
     else if (topicStr == TOPIC_LAMP_CONTROL)
     {
         handleMqttLampMessages(message);
