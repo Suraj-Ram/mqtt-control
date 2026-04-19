@@ -36,6 +36,9 @@ struct LampControlMessage
     bool hasBrightness = false;
     uint8_t brightness = 0;
 
+    bool hasColorTemp = false;
+    uint8_t color_temp = 0;
+
     static bool parse(const String &json, LampControlMessage &out)
     {
         JsonDocument doc;
@@ -62,14 +65,26 @@ struct LampControlMessage
             }
         }
 
+        if (doc.containsKey("color_temp"))
+        {
+            uint8_t ct = doc["color_temp"];
+            if (ct <= 11)
+            {
+                out.hasColorTemp = true;
+                out.color_temp = ct;
+            }
+        }
+
         return true;
     }
 };
 
 struct LampState
 {
-    bool power = false;
+    // We will start the IRL lamp in this config (middle button on remote)
+    bool power = true;
     uint8_t brightness = 10; // Whole numbers between 0 and 10 inclusive
+    uint8_t color_temp = 5; // Whole numbers between 0 and 11 inclusive, 0 is warmest, 11 is coolest
 
     // get json representation of the lamp state
     String toJson()
@@ -77,6 +92,7 @@ struct LampState
         JsonDocument doc;
         doc["power"] = power ? "on" : "off";
         doc["brightness"] = brightness;
+        doc["color_temp"] = color_temp;
         String json;
         serializeJson(doc, json);
         return json;
@@ -145,6 +161,48 @@ struct LampState
 
         mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
     }
+
+    void updateColorTemperature(uint8_t newColorTemp, PubSubClient &mqttClient, bool sendRemoteSignal = false, RCSwitch &RF_TX_Client = txSwitch)
+    {
+        if (newColorTemp == color_temp)
+        {
+            debugPrint("updateColorTemperature called with same value, skipping update.", mqttClient);
+            return;
+        }
+
+        int difference = newColorTemp - color_temp;
+        char buffer[50];
+        sprintf(buffer, "Color temperature difference: %d", difference);
+        debugPrint(buffer, mqttClient);
+
+        if (sendRemoteSignal)
+        {   delay(100);
+            debugPrint("is transmitting is true", mqttClient);
+            if (difference > 0)
+            {
+                for (int i = 0; i < difference; i++)
+                {
+                    debugPrint("Sending RF signal to increase color temperature", mqttClient);
+                    RF_TX_Client.send(BUTTON_CT_UP, RF_BIT_LENGTH);
+                    delay(RF_REPEAT_PRESS_DELAY_MS);                     
+                }
+            }
+            else
+            {
+                for (int i = 0; i < -difference; i++)
+                {
+                    debugPrint("Sending RF signal to decrease color temperature", mqttClient);
+                    RF_TX_Client.send(BUTTON_CT_DOWN, RF_BIT_LENGTH); 
+                    delay(RF_REPEAT_PRESS_DELAY_MS);                        
+                }
+            }
+            Serial.println("RF signals sent to adjust color temperature");
+        }
+
+        color_temp = newColorTemp;
+
+        mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
+    }
 };
 
 LampState lampState;
@@ -205,6 +263,11 @@ void handleMqttLampMessages(String message)
     if (cmd.hasBrightness)
     {
         lampState.updateBrightness(cmd.brightness, mqtt, true, txSwitch);
+    }
+
+    if (cmd.hasColorTemp)
+    {
+        lampState.updateColorTemperature(cmd.color_temp, mqtt, true, txSwitch);
     }
 }
 
