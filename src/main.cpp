@@ -95,21 +95,17 @@ struct LampState
         if (sendRemoteSignal)
             Serial.println("Sending RF signal to change power state");
             RF_TX_Client.send(BUTTON_POWER, RF_BIT_LENGTH);
+            Serial.println("RF signal sent");
 
         power = newPowerState;
-
-        
-        
-        // TODO figure out a global way to set this. Ideally all RF operations will be delegated to a class that internally sets this.
-        lastTxTime = millis();
-        debugPrint((String("Last TX time: ") + String(lastTxTime)).c_str(), mqttClient);
-        Serial.println("RF signal sent");
 
         mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
     }
 
     void updateBrightness(uint8_t newBrightness, PubSubClient &mqttClient, bool sendRemoteSignal = false, RCSwitch &RF_TX_Client = txSwitch)
     {
+        return;
+        
         const int B_CHANGE_DELAY_MS = 400; // Delay between brightness change signals, need to fine tune this value
 
         if (newBrightness == brightness)
