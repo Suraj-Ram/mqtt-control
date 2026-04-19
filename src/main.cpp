@@ -36,9 +36,6 @@ struct LampControlMessage
     bool hasBrightness = false;
     uint8_t brightness = 0;
 
-    bool hasColorTemp = false;
-    uint8_t colorTemp = 0; // 0–10, maps to CT_DOWN/CT_UP steps
-
     static bool parse(const String &json, LampControlMessage &out)
     {
         JsonDocument doc;
@@ -62,16 +59,6 @@ struct LampControlMessage
             {
                 out.hasBrightness = true;
                 out.brightness = b;
-            }
-        }
-
-        if (doc.containsKey("color_temp"))
-        {
-            uint8_t ct = doc["color_temp"];
-            if (ct <= 10)
-            {
-                out.hasColorTemp = true;
-                out.colorTemp = ct;
             }
         }
 
