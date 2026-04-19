@@ -85,28 +85,25 @@ struct LampState
     // If makeChange is true, we need to make the change in real life by sending the correct remote action via RF
     void updatePowerState(bool newPowerState, PubSubClient &mqttClient, bool sendRemoteSignal = false, RCSwitch &RF_TX_Client = txSwitch)
     {
-
-        debugPrint("calling update power state", mqttClient);
-        debugPrint("OLD STATE OBJECT", mqttClient);
-        debugPrint(toJson().c_str(), mqttClient);
-
-        // debug print the current state and the given args
-        debugPrint((String("Current power state: ") + String(power)).c_str(), mqttClient);
-        debugPrint((String("New power state: ") + String(newPowerState)).c_str(), mqttClient);
-
-        if ((power != newPowerState))
+        // If the new power state is the same as the current one, do nothing
+        if (newPowerState == power)
         {
-
-            power = newPowerState;
-
-            if (sendRemoteSignal)
-                Serial.println("Sending RF signal to change power state");
-            RF_TX_Client.send(BUTTON_POWER, RF_BIT_LENGTH); // Example RF code for testing
-            // TODO figure out a global way to set this. Ideally all RF operations will be delegated to a class that internally sets this.
-            lastTxTime = millis();
-            debugPrint((String("Last TX time: ") + String(lastTxTime)).c_str(), mqttClient);
-            Serial.println("RF signal sent");
+            debugPrint("updatePowerState called with same value, skipping update.", mqttClient);
+            return;
         }
+
+        if (sendRemoteSignal)
+            Serial.println("Sending RF signal to change power state");
+            RF_TX_Client.send(BUTTON_POWER, RF_BIT_LENGTH);
+
+        power = newPowerState;
+
+        
+        
+        // TODO figure out a global way to set this. Ideally all RF operations will be delegated to a class that internally sets this.
+        lastTxTime = millis();
+        debugPrint((String("Last TX time: ") + String(lastTxTime)).c_str(), mqttClient);
+        Serial.println("RF signal sent");
 
         mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
     }
@@ -515,5 +512,7 @@ void loop()
     }
 
     checkIRReceiver();
-    checkRFReceiver();
+    #if READ_RF_REMOTE_BUTTONS
+        checkRFReceiver();
+    #endif
 }

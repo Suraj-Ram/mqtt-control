@@ -1,3 +1,9 @@
+// Program config flags
+
+// Setting this temporarily to false since the logic that 
+// syncs internal state to captured button presses is not working well
+#define READ_RF_REMOTE_BUTTONS false
+
 #define MQTT_BROKER "10.0.0.37"
 #define MQTT_PORT 1883
 #define CLIENT_ID "ESP32Client"
