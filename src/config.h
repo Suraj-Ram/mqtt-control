@@ -51,3 +51,6 @@
 #define RF_PULSE_LEN   320
 #define RF_BIT_LENGTH  24
 #define TX_PIN         5  // GPIO5 (D1 on NodeMCU)
+#define RF_REPEAT_TX_COUNT 3
+// Delay between brightness change signals, need to fine tune this value
+#define RF_REPEAT_PRESS_DELAY_MS 1200

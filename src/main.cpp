@@ -104,9 +104,6 @@ struct LampState
 
     void updateBrightness(uint8_t newBrightness, PubSubClient &mqttClient, bool sendRemoteSignal = false, RCSwitch &RF_TX_Client = txSwitch)
     {
-        return;
-        
-        const int B_CHANGE_DELAY_MS = 400; // Delay between brightness change signals, need to fine tune this value
 
         if (newBrightness == brightness)
         {
@@ -115,35 +112,36 @@ struct LampState
         }
 
         int difference = newBrightness - brightness;
-        brightness = newBrightness;
-
+        char buffer[50];
+        sprintf(buffer, "Brightness difference: %d", difference);
+        debugPrint(buffer, mqttClient);
+       
         if (sendRemoteSignal)
-        {   
+        {   delay(100);
             debugPrint("is transmitting is true", mqttClient);
-            isTransmitting = true;
             if (difference > 0)
             {
-                for (int i = 0; i <= difference; i++)
+                for (int i = 0; i < difference; i++)
                 {
                     debugPrint("Sending RF signal to increase brightness", mqttClient);
-                    RF_TX_Client.send(BUTTON_B_UP, RF_BIT_LENGTH); // Send brightness up signal
-                    delay(B_CHANGE_DELAY_MS);                      // Small delay between signals
+                    RF_TX_Client.send(BUTTON_B_UP, RF_BIT_LENGTH);
+                    delay(RF_REPEAT_PRESS_DELAY_MS);                     
                 }
             }
             else
             {
-                for (int i = 0; i <= -difference; i++)
+                for (int i = 0; i < -difference; i++)
                 {
                     debugPrint("Sending RF signal to decrease brightness", mqttClient);
-                    RF_TX_Client.send(BUTTON_B_DOWN, RF_BIT_LENGTH); // Send brightness down signal
-                    delay(B_CHANGE_DELAY_MS);                        // Small delay between signals
+                    RF_TX_Client.send(BUTTON_B_DOWN, RF_BIT_LENGTH); 
+                    delay(RF_REPEAT_PRESS_DELAY_MS);                        
                 }
             }
-            delay(100); // Short delay to ensure last signal is sent before allowing RX again, check if this is really needed
-            isTransmitting = false;
-            debugPrint("is transmitting is false", mqttClient);
             Serial.println("RF signals sent to adjust brightness");
         }
+
+
+        brightness = newBrightness;
 
         mqttClient.publish(TOPIC_LAMP_STATE, toJson().c_str());
     }
@@ -307,7 +305,7 @@ void initRFTransmitter()
     txSwitch.enableTransmit(RF_TX_PIN);
     txSwitch.setPulseLength(RF_PULSE_LEN);
     txSwitch.setProtocol(RF_PROTOCOL);
-    txSwitch.setRepeatTransmit(20);
+    txSwitch.setRepeatTransmit(RF_REPEAT_TX_COUNT);
 }
 
 void initRFReceiver()
