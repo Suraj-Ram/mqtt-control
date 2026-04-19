@@ -211,45 +211,22 @@ void handleMqttLampMessages(String message)
     // Handles messages sent to TOPIC_LAMP_CONTROL
     Serial.println("Handling lamp control message:");
 
-    // deserialize json message
-    JsonDocument doc;
-    DeserializationError error = deserializeJson(doc, message);
-    if (error)
+    LampControlMessage cmd;
+    if (!LampControlMessage::parse(message, cmd))
     {
-        Serial.print("Failed to parse JSON: ");
-        Serial.println(error.c_str());
+        Serial.println("Failed to parse lamp control JSON");
         return;
     }
 
-    // serial print incoming json
-    Serial.println("Received JSON:");
-    serializeJsonPretty(doc, Serial);
-    Serial.println();
-
-    bool newPower;
-    uint8_t newBrightness;
-
     // if json contains power field update power state, if it contains brightness field update brightness. If a field is not provided, keep the same state for that field
-    if (doc.containsKey("power"))
+    if (cmd.hasPower)
     {
-        bool validPowerValue = (doc["power"] == "on" || doc["power"] == "off");
-        if (validPowerValue)
-        {
-            bool newPower = doc["power"] == "on" ? true : false;
-            lampState.updatePowerState(newPower, mqtt, true, txSwitch);
-        }
+        lampState.updatePowerState(cmd.power, mqtt, true, txSwitch);
     }
 
-    if (doc.containsKey("brightness"))
+    if (cmd.hasBrightness)
     {
-        uint8_t newBrightness = doc["brightness"];
-        // Ensure brightness is between 0 and 10
-        if (newBrightness > 10 || newBrightness < 0)
-        {
-            Serial.println("Brightness value out of range [0-10], ignoring");
-            return;
-        }
-        lampState.updateBrightness(newBrightness, mqtt, true, txSwitch);
+        lampState.updateBrightness(cmd.brightness, mqtt, true, txSwitch);
     }
 }
 
