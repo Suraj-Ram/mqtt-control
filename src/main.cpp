@@ -21,7 +21,7 @@ RCSwitch txSwitch = RCSwitch();
 RCSwitch rxSwitch = RCSwitch();
 
 unsigned long lastPublish = 0;
-const long publishInterval = 10000000; // Publish every 60 seconds
+const long publishInterval = 1000 * 30; // Publish every 30 seconds
 
 // Ignore our own transmissions
 volatile bool isTransmitting = false;
@@ -244,7 +244,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         if (message == "on")
         {
             // Serial.println("Turning LED ON");
-            // digitalWrite(LED_PIN, HIGH);
+            digitalWrite(LED_PIN, HIGH);
 
             if (lampState.power)
             {
@@ -262,7 +262,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
         else if (message == "off")
         {
             // Serial.println("Turning LED OFF");
-            // digitalWrite(LED_PIN, LOW);
+            digitalWrite(LED_PIN, LOW);
 
             if (!lampState.power)
             {
